@@ -14,7 +14,7 @@
         </view>
         <view class="right-bottom" v-for="numItem in numConfig" :key="numItem" @click="numConfigEvent(numItem)">
           <!--    选择数字    -->
-          <view class="numbers" :class="numItem?'':'zero'">{{ numItem }}</view>
+          <view class="numbers" :class="numItem!=='0'?'':'zero'">{{ numItem }}</view>
         </view>
       </view>
       <view class="left">
@@ -33,137 +33,86 @@
 </template>
 
 <script setup lang="ts">
-
 import {reactive, ref, watch} from "vue";
+import {calculateExpression} from "../../utils/calculation";
 
 interface operateType {
   change: string
-  active: boolean
   styleActive: boolean
 }
 
 let changeConfig = reactive(['AC', '±', '%'])
-let numConfig = [7, 8, 9, 4, 5, 6, 1, 2, 3, 0, '.']
-let operateConfig = reactive<Array<operateType>>([
-  {change: '÷', active: false, styleActive: false},
-  {change: '×', active: false, styleActive: false},
-  {change: '-', active: false, styleActive: false},
-  {change: '+', active: false, styleActive: false},
-  {change: '=', active: false, styleActive: false}
+let numConfig = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.']
+let operateConfig = reactive<operateType[]>([
+  {change: '÷', styleActive: false},
+  {change: '×', styleActive: false},
+  {change: '-', styleActive: false},
+  {change: '+', styleActive: false},
+  {change: '=', styleActive: false}
 ])
+// 数学表达式
+let expression: string[] = ['0']
 
 // 初始结果
-let num = ref<number | string>(0)
-// 第一次输入
-let first: number | string = 0
-// 第二次输入
-let second: number | string = 0
-// 是否正在等待计算
-let wait = ref(false)
+let num = ref<string>('0')
 
 // 清除/切换正负/百分比
 let changeConfigEvent = (e) => {
-  if (e === 'AC' || e === 'C') {
-    wait.value = false;
-    num.value = first = second = 0
+  if (e === 'C' || e === 'AC') {
+    expression = ['0']
+    num.value = '0'
     operateConfig.forEach(item => {
-      item.styleActive = item.active = false
+      item.styleActive = false
     })
-    return
-  }
-  switch (e) {
-    case "±":
-      if (wait.value) {
-        num.value = second = '-0'
-        return
-      }
-      // if (!num.value.toString().includes('-')) {
-      //   num.value = "-" + num.value
-      // } else {
-      //   num.value = num.value.toString().split('-')[1]
-      // }
-      // first = num.value
-      first = num.value = !num.value.toString().includes('-') ?
-          "-" + num.value
-          :
-          num.value.toString().split('-')[1]
-      break;
-    case "%":
-      num.value = num.value / 100;
-      break;
   }
 }
 
 // 选择数字
 let numConfigEvent = (e) => {
-  // 清除计算方式的选中效果
   operateConfig.forEach(item => {
     item.styleActive = false
   })
-  if (wait.value) {
-    num.value = second
-    if (num.value.toString().split(/[.,]/g)[0].length >= 9) return
-    second = num.value == 0 ?
-        num.value = num.value.toString().includes('-') ? '-' + e : e
-        :
-        num.value += e.toString()
-  } else {
-    if (num.value.toString().split(/[.,]/g)[0].length >= 9) return
-    first = num.value == 0 ?
-        num.value = num.value.toString().includes('-') ? '-' + e : e
-        :
-        num.value += e.toString()
+  let lastPerson = expression[expression.length - 1]
+  if (isNaN(parseFloat(lastPerson))) {
+    expression.push(e)
+    num.value = e
+    return
   }
+  if (expression.length > 3) {
+    expression.splice(2, 1, num.value)
+  }
+  expression[lastPerson] === '0' ? num.value = e : num.value += e
+  expression.splice(expression.length - 1, 1, num.value)
 }
 
 // 选择计算方式/计算结果
 let operateConfigEvent = (e, i) => {
   operateConfig.forEach(item => {
-    item.styleActive = item.active = false
-  })
-  operateConfig[i].styleActive = operateConfig[i].active = true
-  if (operateConfig[i].change === '=') {
-    operateConfig[i].styleActive = false
-  }
-  // if (e.change === '=') {
-  if (!wait.value) return num.value
-  let activeSymbol = operateConfig.find(item => item.active === true)
-  console.log(activeSymbol)
-  let numFirst = parseFloat(first.toString())
-  let numSecond = parseFloat(second.toString())
-  num.value = calculationResults(numFirst, numSecond, activeSymbol.change)
-  operateConfig.forEach(item => {
     item.styleActive = false
   })
-  first = num.value
-  return
-  // }
-
-
-}
-
-
-/*
-* firstNum: 第一次输入；
-* secondNum： 第二次输入；
-* conditions： 计算方法；
-* */
-let calculationResults = (firstNum, secondNum, conditions) => {
-  switch (conditions) {
-    case '+':
-      return firstNum + secondNum
-      break;
-    case '-':
-      return firstNum - secondNum
-      break;
-    case '×':
-      return firstNum * secondNum
-      break;
-    case '÷':
-      return firstNum / secondNum
-      break;
+  if (e.change === '=') {
+    console.log(expression.join(''))
+    num.value = calculateExpression(expression.join(''))
+    expression.splice(0, 1, calculateExpression(expression.join('')))
+    return
   }
+  e.styleActive = true
+
+  if (expression[0] == expression[2]) {
+    expression.splice(1, 1, e.change)
+    return;
+  }
+  // 当第二次选择运算符号的时候计算出结果
+  if (expression.length >= 2) {
+    num.value = calculateExpression(expression.join(''))
+    expression = [calculateExpression(expression.join('')), e.change, calculateExpression(expression.join(''))]
+    // expression.splice(0, 1, calculateExpression(expression.join('')))
+    // expression.splice(1, 1, e.change)
+    return;
+  }
+  expression.push(e.change)
 }
+
 
 // 监听结果
 watch(num, (newNum) => {
@@ -171,27 +120,12 @@ watch(num, (newNum) => {
   if (newCount.length > 9) {
     let aa = parseFloat(num.value.toString())
     num.value = newNum % 1 != 0 ? aa.toExponential(4) : aa.toExponential(0)
-    /*  if (newNum % 1 != 0) {
-        console.log(1111)
-        num.value = aa.toExponential(4)
-      } else {
-        console.log(2222)
-        num.value = aa.toExponential(0)
-      }*/
   }
   if (newNum == 0) {
     changeConfig[0] = "AC"
   } else {
     changeConfig[0] = "C"
   }
-})
-watch(operateConfig, (newOperate: Array<operateType>) => {
-  newOperate.map(item => {
-    if (item.styleActive === true) {
-      second = 0
-      wait.value = true
-    }
-  })
 })
 </script>
 
